@@ -1,16 +1,34 @@
-FROM php:8.2-cli
+FROM php:8.2-apache
 
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    libpq-dev zip unzip git curl \
-    && docker-php-ext-install pdo pdo_pgsql
+    git curl zip unzip libpng-dev libonig-dev libxml2-dev \
+    nodejs npm
 
+# Enable Apache rewrite
+RUN a2enmod rewrite
+
+# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-WORKDIR /app
+WORKDIR /var/www
+
+# Copy project
 COPY . .
 
+# Install PHP deps
 RUN composer install --no-dev --optimize-autoloader
 
-EXPOSE 8080
+# Install Node deps & build frontend
+RUN npm install && npm run build
 
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
+# Laravel permissions
+RUN chown -R www-data:www-data storage bootstrap/cache
+
+# Apache config
+COPY ./docker/apache.conf /etc/apache2/sites-available/000-default.conf
+
+CMD php artisan config:cache && \
+    php artisan route:cache && \
+    php artisan view:cache && \
+    apache2-foreground
